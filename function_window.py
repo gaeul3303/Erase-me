@@ -67,7 +67,7 @@ class FunctionWindow(QWidget):
     def initUI(self):
         logo = QPixmap("./public/logo.png")
         self.logo_label = QLabel()
-        self.logo_label.setPixmap(logo.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.logo_label.setPixmap(logo.scaled(240, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         self.logo_label.setAlignment(Qt.AlignCenter)
 
         # 텍스트 클릭보드 마스킹 활성화 버튼
@@ -160,6 +160,7 @@ class FunctionWindow(QWidget):
         vbox.setSpacing(0)
         vbox.setContentsMargins(20, 20, 20, 20)
         vbox.addWidget(self.logo_label)
+        vbox.addSpacing(30)
         vbox.addLayout(hbox_masking)
         vbox.addLayout(hbox_result_tap)
 
@@ -174,10 +175,37 @@ class FunctionWindow(QWidget):
             }
         """)
 
-        vbox.addSpacing(20)
-        redo_btn = QPushButton("텍스트 마스킹 범위 재설정")
-        redo_btn.setFixedSize(200, 47)
-        redo_btn.setStyleSheet("""
+        # 코드 모드 토글 버튼
+        self.code_mode_btn = QPushButton("코드 모드 OFF")
+        self.code_mode_btn.setCheckable(True)
+        self.code_mode_btn.setChecked(False)
+        self.code_mode_btn.setFixedSize(150, 47)
+        self.code_mode_btn.clicked.connect(self.toggle_code_mode)
+        self.code_mode_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F2F2F2;
+                color: #3e5879;
+                font-weight: bold;
+                font-size: 15px;
+                font-family: Pretendard;
+                border: 1px solid #3e5879;
+                border-radius: 8px;
+                padding: 10px 20px;
+            }
+            QPushButton:checked {
+                background-color: #3e5879;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #acbacb;
+            }
+        """)
+
+        # 텍스트 마스킹 범위 재설정 버튼
+        self.redo_btn = QPushButton("텍스트 마스킹 범위 재설정")
+        self.redo_btn.setFixedSize(200, 47)
+        self.redo_btn.clicked.connect(self.handle_back_to_selection)
+        self.redo_btn.setStyleSheet("""
             QPushButton {
                 background-color: #F2F2F2;
                 color: #3e5879;
@@ -192,8 +220,14 @@ class FunctionWindow(QWidget):
                 background-color: #acbacb;
             }
         """)
-        redo_btn.clicked.connect(self.handle_back_to_selection)
-        vbox.addWidget(redo_btn, alignment=Qt.AlignRight)
+
+        # 수평 정렬 레이아웃
+        hbox_buttons = QHBoxLayout()
+        hbox_buttons.setContentsMargins(0, 20, 0, 0)
+        hbox_buttons.addWidget(self.redo_btn)         # 왼쪽 정렬
+        hbox_buttons.addStretch()                     # 중간 빈 공간
+        hbox_buttons.addWidget(self.code_mode_btn)    # 오른쪽 정렬
+        vbox.addLayout(hbox_buttons)
 
         self.setLayout(vbox)
         self.setWindowTitle("Erase Me")
@@ -203,19 +237,56 @@ class FunctionWindow(QWidget):
 
     def toggle_text_masking_process(self):
         if self.btn_text.isChecked():
-            script_path = os.path.abspath("./masking/text_masking.py")
+            if self.code_mode_btn.isChecked():
+                # 코드 모드 ON → code_masking.py 실행
+                script_path = os.path.abspath("./masking/code_masking.py")
+                print("🚀 코드 모드: code_masking.py 실행")
+            else:
+                # 코드 모드 OFF → text_masking.py 실행
+                script_path = os.path.abspath("./masking/text_masking.py")
+                print("🚀 일반 모드: text_masking.py 실행")
+
             self.text_proc = subprocess.Popen(
                 [sys.executable, script_path],
                 stderr=subprocess.DEVNULL
             )
-            print("🚀 텍스트 마스킹 프로그램 실행됨")
             self.btn_text.setText("텍스트 자동 마스킹 (ON)")
+
         else:
             if self.text_proc:
                 self.text_proc.terminate()
                 self.text_proc = None
                 print("🛑 텍스트 마스킹 프로그램 종료됨")
             self.btn_text.setText("텍스트 자동 마스킹 (OFF)")
+    
+    def toggle_code_mode(self):
+        if self.code_mode_btn.isChecked():
+            self.code_mode_btn.setText("코드 모드 (ON)")
+            print("🧠 코드 모드 활성화됨")
+        else:
+            self.code_mode_btn.setText("코드 모드 (OFF)")
+            print("📝 일반 텍스트 모드로 전환됨")
+
+        # 텍스트 마스킹이 실행 중이면 재시작
+        if self.btn_text.isChecked():
+            # 기존 프로세스 종료
+            if self.text_proc:
+                self.text_proc.terminate()
+                self.text_proc = None
+                print("🔄 텍스트 마스킹 프로세스 재시작 중...")
+
+            # 새 모드에 맞는 스크립트 실행
+            if self.code_mode_btn.isChecked():
+                script_path = os.path.abspath("./masking/code_masking.py")
+                print("▶️ 코드 모드로 재실행: code_masking.py")
+            else:
+                script_path = os.path.abspath("./masking/text_masking.py")
+                print("▶️ 일반 모드로 재실행: text_masking.py")
+
+            self.text_proc = subprocess.Popen(
+                [sys.executable, script_path],
+                stderr=subprocess.DEVNULL
+            )
 
     def toggle_image_masking_process(self):
         if self.btn_image_masking.isChecked():
