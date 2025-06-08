@@ -34,6 +34,7 @@ class IntroWindow(QWidget):
         start_btn.clicked.connect(start_callback)
 
         layout.addWidget(logo_label)
+        layout.addSpacing(50)
         layout.addWidget(start_btn, alignment=Qt.AlignCenter)
 
         self.setLayout(layout)
