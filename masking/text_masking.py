@@ -5,10 +5,10 @@ import time
 import re
 import uuid
 import requests
+from dotenv import load_dotenv
 
-# TODO: 서버 주소 env 파일로 이동 필요 (img_masking 참고)
-NER_SERVER_URL = "http://ec2-43-203-236-115.ap-northeast-2.compute.amazonaws.com:8000/ner"
-# MASK_ENTITIES = {"PERSON", "DATE", "LOCATION", "ORGANIZATION", "TIME"}
+load_dotenv()
+server_url = os.getenv("TEXT_MASKING_SERVER_URL")
 SELECTION_MASKING = {
     "이름": {"PERSON"},
     "날짜": {"DATE"},
@@ -26,7 +26,7 @@ def generate_uid():
 
 def get_ner_result(text):
     try:
-        response = requests.post(NER_SERVER_URL, json={"text": text}, timeout=60)
+        response = requests.post(server_url, json={"text": text}, timeout=60)
         response.raise_for_status()
         return response.json()["ner_result"]
     except Exception as e:
@@ -85,17 +85,22 @@ def partial_unmask(text):
     return restored
 
 def main():
-    print("📋 클립보드 감시 중... (Ctrl+C로 종료)")
+    print("📋 text_masking 클립보드 감시 중...")
     last_clip = pyperclip.paste()
 
     try:
         while True:
             current_clip = pyperclip.paste()
+
+            if current_clip.strip() == "":
+                time.sleep(0.3)
+                continue
+
             if current_clip != last_clip:
                 if re.search(r'\[([A-Z]+)_([a-f0-9]{8})\]', current_clip):
+                    print("\n♻️ 마스킹된 텍스트 감지 → 역마스킹")
                     restored = partial_unmask(current_clip)
                     pyperclip.copy(restored)
-                    print("\n♻️ 마스킹된 텍스트 감지 → 부분 복원")
                     print("✅ 복원 후 클립보드에 저장됨:\n", restored)
                     last_clip = restored
                     continue
