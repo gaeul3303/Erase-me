@@ -4,6 +4,7 @@ from pydub import AudioSegment
 from google.cloud import speech
 import requests
 import argparse
+from dotenv import load_dotenv
 
 # 인증 키 경로 설정
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "capstone2-461808-885e4052d835.json"
@@ -14,7 +15,9 @@ parser.add_argument("--source", required=True, help="Path to source audio file (
 args = parser.parse_args()
 SOURCE_FILE = args.source
 CHUNK_LENGTH_MS = 30 * 1000  # 30초 단위 (ms)
-NER_SERVER_URL = "http://ec2-43-203-236-115.ap-northeast-2.compute.amazonaws.com:8000/ner"
+
+load_dotenv()
+server_url = os.getenv("TEXT_MASKING_SERVER_URL")
 
 def split_audio(file_path, chunk_length_ms):
     audio = AudioSegment.from_wav(file_path)
@@ -47,7 +50,7 @@ def transcribe_chunk(path):
     return " ".join(result_texts)
 
 def send_to_ner(full_text):
-    response = requests.post(NER_SERVER_URL, json={"text": full_text}, timeout=60)
+    response = requests.post(server_url, json={"text": full_text}, timeout=60)
     response.raise_for_status()
     data = response.json()
     if "ner_result" not in data:
