@@ -6,6 +6,17 @@ import uuid
 import time
 
 masking_map = {}
+MASK_CACHE_FILE = "masking_record.json"
+
+def save_mask_cache():
+    with open(MASK_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(masking_map, f, ensure_ascii=False, indent=2)
+
+def load_mask_cache():
+    global MASK_CACHE
+    if os.path.exists(MASK_CACHE_FILE):
+        with open(MASK_CACHE_FILE, "r", encoding="utf-8") as f:
+            masking_map = json.load(f)
 
 def generate_placeholder(label):
     return f"{label.upper()}_{uuid.uuid4().hex[:8]}"
@@ -27,12 +38,21 @@ def should_run_code_masking(config_file="selected_fields.json"):
 def mask_and_store(label, origin_value):
     if is_already_masked(origin_value):
         return origin_value
-    if origin_value in masking_map.values():
-        for k, v in masking_map.items():
-            if v == origin_value:
-                return k
+
     placeholder = generate_placeholder(label)
     masking_map[placeholder] = origin_value
+
+    if os.path.exists(MASK_CACHE_FILE):
+        with open(MASK_CACHE_FILE, "r", encoding="utf-8") as f:
+            prev_cache = json.load(f)
+    else:
+        prev_cache = {}
+
+    prev_cache[placeholder] = origin_value
+
+    with open(MASK_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(prev_cache, f, ensure_ascii=False, indent=2)
+
     return placeholder
 
 def is_sensitive_value(value: str):
@@ -143,6 +163,7 @@ def main():
             if current_clip != last_clip:
                 if has_masked_placeholder(current_clip):
                     print("\n♻️ 마스킹된 텍스트 감지 → 역마스킹")
+                    load_mask_cache()
                     restored = unmask(current_clip)
                     pyperclip.copy(restored)
                     print("✅ 복원 후 클립보드에 저장됨:\n", restored)
