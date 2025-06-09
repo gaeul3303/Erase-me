@@ -1,5 +1,8 @@
 import os
 import io
+import re
+import uuid
+import json
 from pydub import AudioSegment
 from google.cloud import speech
 import requests
@@ -18,6 +21,23 @@ CHUNK_LENGTH_MS = 30 * 1000  # 30초 단위 (ms)
 
 load_dotenv()
 server_url = os.getenv("TEXT_MASKING_SERVER_URL")
+MASK_CACHE_FILE = "masking_record.json"
+
+SELECTION_MASKING = {
+    "이름": {"PERSON"},
+    "날짜": {"DATE"},
+    "시간": {"TIME"},
+    "장소": {"LOCATION"},
+    "기관": {"ORGANIZATION"},
+    "이메일": {"EMAIL"},
+    "전화번호": {"PHONE"},
+    "주민등록번호": {"SSN"}
+}
+MASK_CACHE = {}
+
+def save_mask_cache():
+    with open(MASK_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(MASK_CACHE, f, ensure_ascii=False, indent=2)
 
 def split_audio(file_path, chunk_length_ms):
     audio = AudioSegment.from_wav(file_path)
@@ -48,6 +68,62 @@ def transcribe_chunk(path):
     for result in response.results:
         result_texts.append(result.alternatives[0].transcript)
     return " ".join(result_texts)
+
+def generate_uid():
+    return str(uuid.uuid4())[:8]
+
+def load_mask_tags_from_selection(file="selected_fields.json"):
+    if not os.path.exists(file):
+        return set()
+    with open(file, "r", encoding="utf-8") as f:
+        selections = json.load(f)
+    tags = set()
+    for sel in selections:
+        tags.update(SELECTION_MASKING.get(sel, set()))
+    return tags
+
+def get_ner_result(text):
+    try:
+        response = requests.post(server_url, json={"text": text}, timeout=60)
+        response.raise_for_status()
+        return response.json()["ner_result"]
+    except Exception as e:
+        print(f"❌ 서버 요청 실패: {e}")
+        return []
+
+def mask_text_with_cache(text):
+    mask_tags = load_mask_tags_from_selection()
+    result = get_ner_result(text)
+    masked_text = text
+
+    global MASK_CACHE
+    if os.path.exists(MASK_CACHE_FILE):
+        with open(MASK_CACHE_FILE, "r", encoding="utf-8") as f:
+            MASK_CACHE = json.load(f)
+
+    def add_to_cache_and_replace(tag, word):
+        uid = generate_uid()
+        MASK_CACHE[uid] = (tag, word)
+        return f"[{tag}_{uid}]"
+
+    for word, tag in result:
+        if tag in mask_tags and word in masked_text:
+            masked_text = masked_text.replace(word, add_to_cache_and_replace(tag, word))
+
+    if "EMAIL" in mask_tags:
+        for email in re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', masked_text):
+            masked_text = masked_text.replace(email, add_to_cache_and_replace("EMAIL", email))
+
+    if "PHONE" in mask_tags:
+        for phone in re.findall(r'01[016789]-\d{3,4}-\d{4}', masked_text):
+            masked_text = masked_text.replace(phone, add_to_cache_and_replace("PHONE", phone))
+
+    if "SSN" in mask_tags:
+        for ssn in re.findall(r'\d{6}-\d{7}', masked_text):
+            masked_text = masked_text.replace(ssn, add_to_cache_and_replace("SSN", ssn))
+
+    save_mask_cache()
+    return masked_text
 
 def send_to_ner(full_text):
     response = requests.post(server_url, json={"text": full_text}, timeout=60)
@@ -90,13 +166,12 @@ def main():
     try:
         ner_result = send_to_ner(full_transcript)
         print("마스킹 결과 수신 완료")
-        masked_sentence = render_masked_sentence(ner_result)
+        masked_sentence = mask_text_with_cache(ner_result, full_transcript)
         print("\n🛡️ 마스킹된 문장:\n", masked_sentence)
         with open("masked_result.txt", "w", encoding="utf-8") as f:
             f.write(masked_sentence)
     except Exception as e:
         print(" 마스킹 실패:", e)
-    
         return
 
 if __name__ == "__main__":
