@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 server_url = os.getenv("TEXT_MASKING_SERVER_URL")
+MASK_CACHE_FILE = "masking_record.json"
+
 SELECTION_MASKING = {
     "이름": {"PERSON"},
     "날짜": {"DATE"},
@@ -20,6 +22,16 @@ SELECTION_MASKING = {
     "주민등록번호": {"SSN"}
 }
 MASK_CACHE = {}
+
+def save_mask_cache():
+    with open(MASK_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(MASK_CACHE, f, ensure_ascii=False, indent=2)
+
+def load_mask_cache():
+    global MASK_CACHE
+    if os.path.exists(MASK_CACHE_FILE):
+        with open(MASK_CACHE_FILE, "r", encoding="utf-8") as f:
+            MASK_CACHE = json.load(f)
 
 def generate_uid():
     return str(uuid.uuid4())[:8]
@@ -49,30 +61,33 @@ def mask_text_with_cache(text):
     result = get_ner_result(text)
     masked_text = text
 
+    global MASK_CACHE
+    if os.path.exists(MASK_CACHE_FILE):
+        with open(MASK_CACHE_FILE, "r", encoding="utf-8") as f:
+            MASK_CACHE = json.load(f)
+
+    def add_to_cache_and_replace(tag, word):
+        uid = generate_uid()
+        MASK_CACHE[uid] = (tag, word)
+        return f"[{tag}_{uid}]"
+
     for word, tag in result:
         if tag in mask_tags and word in masked_text:
-            uid = generate_uid()
-            MASK_CACHE[uid] = (tag, word)
-            masked_text = masked_text.replace(word, f"[{tag}_{uid}]")
+            masked_text = masked_text.replace(word, add_to_cache_and_replace(tag, word))
 
     if "EMAIL" in mask_tags:
         for email in re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', masked_text):
-            uid = generate_uid()
-            MASK_CACHE[uid] = ("EMAIL", email)
-            masked_text = masked_text.replace(email, f"[EMAIL_{uid}]")
+            masked_text = masked_text.replace(email, add_to_cache_and_replace("EMAIL", email))
 
     if "PHONE" in mask_tags:
         for phone in re.findall(r'01[016789]-\d{3,4}-\d{4}', masked_text):
-            uid = generate_uid()
-            MASK_CACHE[uid] = ("PHONE", phone)
-            masked_text = masked_text.replace(phone, f"[PHONE_{uid}]")
+            masked_text = masked_text.replace(phone, add_to_cache_and_replace("PHONE", phone))
 
     if "SSN" in mask_tags:
         for ssn in re.findall(r'\d{6}-\d{7}', masked_text):
-            uid = generate_uid()
-            MASK_CACHE[uid] = ("SSN", ssn)
-            masked_text = masked_text.replace(ssn, f"[SSN_{uid}]")
+            masked_text = masked_text.replace(ssn, add_to_cache_and_replace("SSN", ssn))
 
+    save_mask_cache()
     return masked_text
 
 def partial_unmask(text):
@@ -99,6 +114,7 @@ def main():
             if current_clip != last_clip:
                 if re.search(r'\[([A-Z]+)_([a-f0-9]{8})\]', current_clip):
                     print("\n♻️ 마스킹된 텍스트 감지 → 역마스킹")
+                    load_mask_cache()
                     restored = partial_unmask(current_clip)
                     pyperclip.copy(restored)
                     print("✅ 복원 후 클립보드에 저장됨:\n", restored)
