@@ -125,22 +125,6 @@ def mask_text_with_cache(text):
     save_mask_cache()
     return masked_text
 
-def send_to_ner(full_text):
-    response = requests.post(server_url, json={"text": full_text}, timeout=60)
-    response.raise_for_status()
-    data = response.json()
-    if "ner_result" not in data:
-        raise ValueError("ner_result 없음")
-    return data["ner_result"]
-
-def render_masked_sentence(ner_result):
-    output = []
-    for word, tag in ner_result:
-        if tag != "O":
-            output.append(f"{{{tag}}}")
-        else:
-            output.append(word)
-    return "".join(output).replace("  ", " ").strip()
 
 def main():
     print("🔪 오디오 분할 중...")
@@ -162,16 +146,18 @@ def main():
 
     print("📝 전체 텍스트 통합 결과:\n")
     print(full_transcript.strip())
-    print("NER 서버 요청 중...")
+
+    print("🛡️ 마스킹 중...")
     try:
-        ner_result = send_to_ner(full_transcript)
-        print("마스킹 결과 수신 완료")
-        masked_sentence = mask_text_with_cache(ner_result, full_transcript)
-        print("\n🛡️ 마스킹된 문장:\n", masked_sentence)
+        masked_sentence = mask_text_with_cache(full_transcript)
+        print("✅ 마스킹 완료\n")
+        print(masked_sentence)
+
         with open("masked_result.txt", "w", encoding="utf-8") as f:
             f.write(masked_sentence)
+
     except Exception as e:
-        print(" 마스킹 실패:", e)
+        print("❌ 마스킹 실패:", e)
         return
 
 if __name__ == "__main__":
