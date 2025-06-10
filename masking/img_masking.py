@@ -127,8 +127,10 @@ class ImageMaskingApp(QWidget):
 
             # 고유한 파일명 생성
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            os.makedirs("masked_images", exist_ok=True)
-            save_path = f"masked_images/code_{timestamp}.png"
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            save_dir = os.path.join(desktop_path, "EraseMe_Masked")
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f"masked_{timestamp}.png")
             print(f"✅ 서버 요청 준비 완료: {save_path}")
 
             # 창을 최상단에 띄우기
