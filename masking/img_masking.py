@@ -5,6 +5,8 @@ import datetime
 import requests
 from PIL import Image
 from dotenv import load_dotenv
+from text_masking import load_mask_tags_from_selection
+import json
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QTabWidget, QMessageBox
@@ -28,7 +30,9 @@ class MaskingWorker(QThread):
     def run(self):
         try:
             files = {"image": ("clipboard.png", self.img_data, "image/png")}
-            res = requests.post(self.server_url, files=files)
+            mask_tags = list(load_mask_tags_from_selection())  # {"PERSON", "DATE", ...}
+            data = {"mask_tags": ",".join(mask_tags)}  # 서버에 문자열로 전달
+            res = requests.post(self.server_url, files=files, data=data)
             if res.status_code == 200:
                 with open(self.save_path, "wb") as out:
                     out.write(res.content)
