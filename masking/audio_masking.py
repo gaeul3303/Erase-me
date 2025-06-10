@@ -125,6 +125,10 @@ def mask_text_with_cache(text):
     save_mask_cache()
     return masked_text
 
+def append_log(message):
+    print(message)
+    with open("log.txt", "a", encoding="utf-8") as f:
+        f.write(message + "\n")
 
 def main():
     print("🔪 오디오 분할 중...")
@@ -132,24 +136,26 @@ def main():
     print("파일 존재 여부:", os.path.exists(SOURCE_FILE))
     chunk_paths = split_audio(SOURCE_FILE, CHUNK_LENGTH_MS)
 
-    print("🗣️ 음성 인식 시작...\n")
+    append_log("🗣️ 음성 인식 시작...\n")
     full_transcript = ""
     for i, chunk_path in enumerate(chunk_paths):
-        print(f"🎧 조각 {i+1}/{len(chunk_paths)} 처리 중...")
+        append_log(f"🎧 조각 {i+1}/{len(chunk_paths)} 처리 중...")
         try:
             transcript = transcribe_chunk(chunk_path)
-            print(f"📄 조각 {i+1} 텍스트: {transcript}\n")
+            append_log(f"📄 조각 {i+1} 텍스트: {transcript}\n")
             full_transcript += transcript + " "
         except Exception as e:
-            print(f"❌ 조각 {i+1}에서 오류 발생: {e}")
+            append_log(f"❌ 조각 {i+1}에서 오류 발생: {e}")
         os.remove(chunk_path)
 
     print("📝 전체 텍스트 통합 결과:\n")
-    print(full_transcript.strip())
+    append_log(full_transcript.strip())
 
     print("🛡️ 마스킹 중...")
     try:
         masked_sentence = mask_text_with_cache(full_transcript)
+        append_log("✅ 마스킹 완료")
+        append_log(masked_sentence)
         print("✅ 마스킹 완료\n")
         print(masked_sentence)
 

@@ -32,7 +32,11 @@ class MaskingWorker(QThread):
             files = {"image": ("clipboard.png", self.img_data, "image/png")}
             mask_tags = list(load_mask_tags_from_selection())  # {"PERSON", "DATE", ...}
             data = {"mask_tags": ",".join(mask_tags)}  # 서버에 문자열로 전달
+            print(f"[디버그] 요청 URL: {self.server_url}")
+            print(f"[디버그] 요청 태그: {data}")
             res = requests.post(self.server_url, files=files, data=data)
+            print(f"[디버그] 응답 상태코드: {res.status_code}")
+            print(f"[디버그] 응답 내용: {res.text[:200]}...")
             if res.status_code == 200:
                 with open(self.save_path, "wb") as out:
                     out.write(res.content)
@@ -50,7 +54,15 @@ class ImageMaskingApp(QWidget):
 
         # 환경변수 로드
         load_dotenv()
-        self.server_url = os.getenv("IMG_MASKING_SERVER_URL")
+        mode = os.getenv("MASK_MODE", "text")
+
+        if mode == "code":
+            self.server_url = os.getenv("IMG_MASKING_SERVER_URL_CODE")
+        else:
+            self.server_url = os.getenv("IMG_MASKING_SERVER_URL_TEXT") 
+        print(f"[디버그] 현재 마스킹 모드: {mode}")
+        print(f"[디버그] 서버 URL 설정됨: {self.server_url}")
+        
         if not self.server_url:
             QMessageBox.critical(self, "에러", "❌ IMG_MASKING_SERVER_URL 환경 변수가 설정되지 않았습니다.")
             sys.exit(1)

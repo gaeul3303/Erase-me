@@ -54,6 +54,14 @@ if __name__ == '__main__':
         if os.path.exists("masking_record.json"):
             os.remove("masking_record.json")
             print("🧹 masking_record.json 삭제됨")
+        # log.txt 삭제
+        log_path = "log.txt"
+        if os.path.exists(log_path):
+            try:
+                os.remove(log_path)
+                print("🧹 log.txt 파일 삭제 완료")
+            except Exception as e:
+                print(f"❌ log.txt 삭제 실패: {e}")
 
     app.aboutToQuit.connect(cleanup_masking_record)
 

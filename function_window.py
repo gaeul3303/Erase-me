@@ -5,7 +5,7 @@ import subprocess
 import signal
 import datetime
 import requests
-
+from PyQt5.QtWidgets import QLabel, QScrollArea
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QStackedWidget, QLabel, QFileDialog
@@ -294,11 +294,16 @@ class FunctionWindow(QWidget):
             
             if self.img_proc is None:
                 script_path = os.path.abspath("./masking/img_masking.py")
+                mode = "code" if self.code_mode_btn.isChecked() else "text"
+                env = os.environ.copy()
+                env["MASK_MODE"] = mode
+
                 self.img_proc = subprocess.Popen(
                     [sys.executable, script_path],
+                    env=env,
                     stderr=subprocess.DEVNULL
                 )
-                print("🚀 이미지 마스킹 프로그램 실행됨")
+                print(f"🚀 이미지 마스킹 프로그램 실행됨 ({mode} 모드)")
                 self.btn_image_masking.setText("이미지 자동 마스킹 (ON)")
             else:
                 print("이미 이미지 마스킹 프로그램이 실행 중입니다.")
@@ -355,10 +360,11 @@ class FunctionWindow(QWidget):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(10)
+        self.final_masked_result = ""
 
         label = QLabel("🎤 음성 파일 업로드")
         label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet("margin-top: 46px;")
+        #label.setStyleSheet("margin-top: 46px;")
 
         self.voice_file_label = QLabel("선택된 파일 없음")
         self.voice_file_label.setAlignment(Qt.AlignCenter)
@@ -367,32 +373,54 @@ class FunctionWindow(QWidget):
         self.upload_btn.setFixedWidth(200)
         self.upload_btn.clicked.connect(self.upload_voice)
 
-        # 마스킹 결과 출력용 QLabel
-        self.masked_result_label = QLabel("")
-        self.masked_result_label.setAlignment(Qt.AlignCenter)
-        self.masked_result_label.setWordWrap(True)
-        self.masked_result_label.setStyleSheet("color: #3e5879; font-size: 16px; padding: 10px;")
+        self.scroll_label = QLabel()
+        self.scroll_label.setText("⏳ 마스킹 처리 중...")
+        self.scroll_label.setWordWrap(True)
+        self.scroll_label.setAlignment(Qt.AlignCenter)
+        self.scroll_label.setStyleSheet("""
+            QLabel {
+                color: #3e5879;
+                font-size: 15px;
+                padding: 8px;
+                line-height: 1.5em;
+            }
+        """)
 
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFixedHeight(180)
+        self.scroll_area.setWidget(self.scroll_label)
+        self.scroll_area.hide()
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                background: #fff;
+
+            }
+        """)
         # 복사 버튼 추가 (초기에는 숨김)
         self.copy_result_btn = QPushButton("마스킹 결과 복사")
         self.copy_result_btn.setFixedWidth(200)
         self.copy_result_btn.clicked.connect(self.copy_masked_result)
         self.copy_result_btn.hide()
-        layout.addWidget(self.copy_result_btn, alignment=Qt.AlignCenter)
+        #layout.addWidget(self.copy_result_btn, alignment=Qt.AlignCenter)
 
         # 다시 업로드 버튼 추가 (초기에는 숨김)
         self.reupload_btn = QPushButton("다시 업로드하기")
         self.reupload_btn.setFixedWidth(200)
         self.reupload_btn.clicked.connect(self.reset_voice_page)
         self.reupload_btn.hide()
-        layout.addWidget(self.reupload_btn, alignment=Qt.AlignCenter)
+        #layout.addWidget(self.reupload_btn, alignment=Qt.AlignCenter)
 
-        # 레이아웃 구성
-        layout.addWidget(label)
+        # 구성 순서
+        layout.addWidget(label, alignment=Qt.AlignCenter)
         layout.addWidget(self.upload_btn, alignment=Qt.AlignCenter)
-        layout.addWidget(self.voice_file_label)
-        layout.addWidget(self.masked_result_label)
+        layout.addWidget(self.voice_file_label, alignment=Qt.AlignCenter)
+        layout.addWidget(self.scroll_area)
+        layout.addSpacing(15)
         layout.addWidget(self.copy_result_btn, alignment=Qt.AlignCenter)
+        layout.addWidget(self.reupload_btn, alignment=Qt.AlignCenter)
 
 
         widget = QWidget()
@@ -401,7 +429,8 @@ class FunctionWindow(QWidget):
 
     def reset_voice_page(self):
         self.voice_file_label.setText("선택된 파일 없음")
-        self.masked_result_label.setText("")
+        self.scroll_label.setText("")
+        self.scroll_area.hide()
         self.copy_result_btn.hide()
         self.reupload_btn.hide()
 
@@ -411,9 +440,14 @@ class FunctionWindow(QWidget):
 
     def upload_image(self):
         load_dotenv()
-        server_url = os.getenv("IMG_MASKING_SERVER_URL")
+        if self.code_mode_btn.isChecked():
+            env_key = "IMG_MASKING_SERVER_URL_CODE"
+        else:
+            env_key = "IMG_MASKING_SERVER_URL_TEXT"
+        
+        server_url = os.getenv(env_key)   
         if not server_url:
-            QMessageBox.critical(self, "에러", "❌ IMG_MASKING_SERVER_URL 환경 변수가 설정되지 않았습니다.")
+            QMessageBox.critical(self, "에러", "❌ {env_key}  환경 변수가 설정되지 않았습니다.")
             return
 
         file_path, _ = QFileDialog.getOpenFileName(
@@ -460,12 +494,24 @@ class FunctionWindow(QWidget):
 
     def upload_voice(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "음성 선택", "", "Audio Files (*.mp3 *.wav *.m4a)")
+        # 로그 파일 초기화
+        if os.path.exists("log.txt"):
+            os.remove("log.txt")
+
+        # 로그 모니터링 시작
+        self.log_timer = QTimer(self)
+        self.log_timer.timeout.connect(self.update_log_display)
+        self.log_timer.start(1000)
         if file_path:
             self.voice_file_label.setText(f"선택된 음성: {file_path.split('/')[-1]}")
-            self.masked_result_label.setText("⏳ 마스킹 처리 중...")
+            #self.scroll_label.setText("⏳ 마스킹 처리 중...")
+            #self.scroll_area.show()
+            
 
             self.sender().hide()  # QPushButton
             self.voice_file_label.hide()
+            self.scroll_label.setText("⏳ 마스킹 처리 중...")
+            self.scroll_area.show()
             # 기존 결과 파일 제거
             result_path = "masked_result.txt"
             if os.path.exists(result_path):
@@ -487,21 +533,32 @@ class FunctionWindow(QWidget):
             except Exception as e:
                 print(f"❌ audio_masking.py 실행 실패: {e}")
 
+    def update_log_display(self):
+        if os.path.exists("log.txt"):
+            with open("log.txt", "r", encoding="utf-8") as f:
+                lines = f.read().strip()
+            self.scroll_label.setText(lines)
+
     def check_masking_result(self):
         result_path = "masked_result.txt"
         if os.path.exists(result_path):
             with open(result_path, "r", encoding="utf-8") as f:
                 result_text = f.read().strip()
-            self.masked_result_label.setText(f"🛡️ 마스킹 결과:\n{result_text}")
+            self.final_masked_result = result_text  # ✅ 여기 저장
+            self.scroll_label.setText(f"🛡️ 마스킹 결과:\n{result_text}")
             self.copy_result_btn.show()
-            self.reupload_btn.show()  # 다시 업로드 버튼 표시
+            self.reupload_btn.show()
             self.check_result_timer.stop()
+            self.log_timer.stop()
 
     def copy_masked_result(self):
         clipboard = QApplication.clipboard()
-        result_text = self.masked_result_label.text().replace("🛡️ 마스킹 결과:\n", "")
-        clipboard.setText(result_text)
-        print("📋 마스킹 결과 복사 완료")
+        if self.final_masked_result:
+            clipboard.setText(self.final_masked_result.strip())
+            print("📋 마스킹 결과 복사 완료")
+        else:
+            print("⚠️ 복사할 마스킹 결과가 없습니다.")
+
 
     # 이미지 버튼 이벤트 핸들러
     def select_image(self):
@@ -520,6 +577,15 @@ class FunctionWindow(QWidget):
         if self.text_proc:
             self.text_proc.terminate()
             print("🛑 텍스트 마스킹 프로세스도 함께 종료됨")
+         # log.txt 삭제
+        log_path = "log.txt"
+        if os.path.exists(log_path):
+            try:
+                os.remove(log_path)
+                print("🧹 log.txt 파일 삭제 완료")
+            except Exception as e:
+                print(f"❌ log.txt 삭제 실패: {e}")
+
         event.accept()
 
     # TODO: 탭 디자인 팀 기호에 맞게 변경
