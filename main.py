@@ -49,6 +49,13 @@ if __name__ == '__main__':
         families = QFontDatabase.applicationFontFamilies(font_id)
         if families:
             app.setFont(QFont(families[0], 12))
+    
+    def cleanup_masking_record():
+        if os.path.exists("masking_record.json"):
+            os.remove("masking_record.json")
+            print("🧹 masking_record.json 삭제됨")
+
+    app.aboutToQuit.connect(cleanup_masking_record)
 
     win = MainWindow()
     sys.exit(app.exec_())
